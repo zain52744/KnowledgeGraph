@@ -1,0 +1,119 @@
+source,relation,target
+Albert Einstein,developed,Theory of Relativity
+Albert Einstein,won,Nobel Prize in Physics
+Albert Einstein,born_in,Ulm Germany
+Albert Einstein,worked_at,Princeton University
+Albert Einstein,published,Special Relativity Paper
+Albert Einstein,collaborated_with,Niels Bohr
+Theory of Relativity,influenced,Modern Physics
+Theory of Relativity,includes,E=mc2
+E=mc2,describes,Mass Energy Equivalence
+Marie Curie,discovered,Radium
+Marie Curie,discovered,Polonium
+Marie Curie,won,Nobel Prize in Physics
+Marie Curie,won,Nobel Prize in Chemistry
+Marie Curie,born_in,Warsaw Poland
+Marie Curie,worked_at,University of Paris
+Marie Curie,collaborated_with,Pierre Curie
+Pierre Curie,married,Marie Curie
+Pierre Curie,discovered,Piezoelectricity
+Pierre Curie,worked_at,University of Paris
+Radium,used_in,Cancer Treatment
+Radium,is_a,Radioactive Element
+Polonium,is_a,Radioactive Element
+Isaac Newton,developed,Laws of Motion
+Isaac Newton,developed,Law of Gravitation
+Isaac Newton,invented,Calculus
+Isaac Newton,born_in,Lincolnshire England
+Isaac Newton,worked_at,Cambridge University
+Laws of Motion,foundation_of,Classical Mechanics
+Law of Gravitation,describes,Gravitational Force
+Classical Mechanics,influenced_by,Isaac Newton
+Stephen Hawking,authored,A Brief History of Time
+Stephen Hawking,worked_at,Cambridge University
+Stephen Hawking,developed,Hawking Radiation Theory
+Stephen Hawking,studied,Black Holes
+Hawking Radiation Theory,related_to,Black Holes
+Black Holes,described_by,General Relativity
+General Relativity,developed_by,Albert Einstein
+A Brief History of Time,published_by,Bantam Books
+Nikola Tesla,invented,AC Motor
+Nikola Tesla,invented,Tesla Coil
+Nikola Tesla,worked_with,Thomas Edison
+Nikola Tesla,founded,Tesla Electric Company
+Nikola Tesla,born_in,Smiljan Croatia
+AC Motor,powers,Electric Vehicles
+Thomas Edison,invented,Light Bulb
+Thomas Edison,invented,Phonograph
+Thomas Edison,founded,General Electric
+Thomas Edison,born_in,Milan Ohio
+Light Bulb,uses,Electrical Energy
+General Electric,founded_by,Thomas Edison
+Apple,founded_by,Steve Jobs
+Apple,founded_by,Steve Wozniak
+Apple,headquartered_in,Cupertino California
+Apple,produces,iPhone
+Apple,produces,MacBook
+Apple,produces,iPad
+Steve Jobs,co_founded,Apple
+Steve Jobs,co_founded,Pixar
+Steve Jobs,born_in,San Francisco California
+iPhone,runs,iOS
+iOS,developed_by,Apple
+MacBook,runs,macOS
+macOS,developed_by,Apple
+Google,founded_by,Larry Page
+Google,founded_by,Sergey Brin
+Google,headquartered_in,Mountain View California
+Google,owns,YouTube
+Google,owns,DeepMind
+Google,produces,Android
+Larry Page,studied_at,Stanford University
+Sergey Brin,studied_at,Stanford University
+Android,competes_with,iOS
+DeepMind,developed,AlphaGo
+AlphaGo,defeated,Lee Sedol
+AlphaGo,uses,Deep Learning
+Microsoft,founded_by,Bill Gates
+Microsoft,founded_by,Paul Allen
+Microsoft,produces,Windows
+Microsoft,produces,Azure
+Microsoft,owns,LinkedIn
+Microsoft,owns,GitHub
+Bill Gates,co_founded,Microsoft
+Bill Gates,born_in,Seattle Washington
+Windows,competes_with,macOS
+Azure,competes_with,AWS
+GitHub,used_for,Version Control
+Python,created_by,Guido van Rossum
+Python,used_in,Machine Learning
+Python,used_in,Data Science
+Python,used_in,Web Development
+Python,influenced,Django
+Django,built_with,Python
+Django,used_for,Web Development
+Machine Learning,subset_of,Artificial Intelligence
+Deep Learning,subset_of,Machine Learning
+Neural Networks,used_in,Deep Learning
+Artificial Intelligence,applied_in,Healthcare
+Artificial Intelligence,applied_in,Finance
+Artificial Intelligence,applied_in,Autonomous Vehicles
+Tesla Inc,founded_by,Elon Musk
+Tesla Inc,produces,Electric Cars
+Tesla Inc,headquartered_in,Austin Texas
+Elon Musk,founded,SpaceX
+Elon Musk,co_founded,Tesla Inc
+Elon Musk,born_in,Pretoria South Africa
+SpaceX,developed,Falcon 9
+SpaceX,developed,Starship
+Falcon 9,used_for,Satellite Launch
+SpaceX,mission,Mars Colonization
+DNA,discovered_by,James Watson
+DNA,discovered_by,Francis Crick
+DNA,carries,Genetic Information
+DNA,located_in,Cell Nucleus
+James Watson,worked_at,Cambridge University
+CRISPR,used_for,Gene Editing
+CRISPR,discovered_by,Jennifer Doudna
+Jennifer Doudna,won,Nobel Prize in Chemistry
+Gene Editing,applied_in,Medicine
