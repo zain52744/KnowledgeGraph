@@ -16,9 +16,6 @@ services:
       - MONGODB_URI=mongodb://admin:password@host.docker.internal:27017/knowledge_graph?authSource=admin
       - FAISS_INDEX_PATH=/app/faiss_index
       - LOG_LEVEL=INFO
-      - LANGFUSE_PUBLIC_KEY=pk-lf-9c6ff780-2f1d-41f3-a636-1322e4bb0b8d
-      - LANGFUSE_SECRET_KEY=sk-lf-c5d562a1-e8f7-4cb0-8852-2963191c62c3
-      - LANGFUSE_HOST=https://us.cloud.langfuse.com
     env_file:
       - .env
     healthcheck:
