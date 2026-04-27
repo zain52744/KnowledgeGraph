@@ -3,9 +3,10 @@ import os
 import tempfile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.auth import verify_api_key
+from api.cache import cache
 from api.dependencies import get_pipeline
 from api.limiter import limiter
 from api.sanitization import sanitize_filename
@@ -22,6 +23,11 @@ class IngestResponse(BaseModel):
     status: str
     chunks_processed: int
     entities_extracted: int
+
+
+class TextIngestRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+    source: str = "report"
 
 
 @router.post("/pdf", response_model=IngestResponse)
@@ -60,6 +66,7 @@ async def ingest_pdf(
         knowledge_graphs = result.get("knowledge_graphs", [])
         entities_extracted = sum(len(kg.entities) for kg in knowledge_graphs)
 
+        cache.clear()
         logger.info(
             f"Ingested PDF: {file.filename} — "
             f"{chunks_processed} chunks, {entities_extracted} entities"
@@ -114,6 +121,7 @@ async def ingest_csv(
         graph_stats = result.get("graph_stats", {})
         entities_extracted = graph_stats.get("node_count", 0)
 
+        cache.clear()
         logger.info(
             f"Ingested CSV: {file.filename} — "
             f"{chunks_processed} records, {entities_extracted} entities"
@@ -129,3 +137,21 @@ async def ingest_csv(
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+@router.post("/text", response_model=IngestResponse)
+@limiter.limit("10/minute")
+async def ingest_text(
+    request: Request,
+    body: TextIngestRequest,
+    pipeline: KnowledgeGraphPipeline = Depends(get_pipeline),
+) -> IngestResponse:
+    result = pipeline.ingest_text(text=body.text, source=body.source)
+    chunks_processed = len(result.get("chunks", []))
+    cache.clear()
+    logger.info(f"Ingested text from '{body.source}' — {chunks_processed} chunks")
+    return IngestResponse(
+        status="success",
+        chunks_processed=chunks_processed,
+        entities_extracted=0,
+    )

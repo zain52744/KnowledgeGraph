@@ -74,14 +74,14 @@ async def lifespan(app: FastAPI):
 
     # Redis cache
     try:
-        from api.cache import init_redis
-        init_redis()
+        from api.cache import cache
+        cache.connect()
     except Exception as e:
         logger.warning(f"Redis connection failed (cache disabled): {e}")
 
     # Initialize LangFuse tracing first so callbacks are ready before LLMs are created
-    from monitoring.langfuse_setup import init_langfuse
-    init_langfuse()
+    from monitoring.langfuse_setup import langfuse_manager
+    langfuse_manager.init()
 
     # Initialize shared graph, vector store, and pipeline
     try:
@@ -105,8 +105,8 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Failed to save FAISS index on shutdown: {e}")
 
     try:
-        from api.cache import close_redis
-        close_redis()
+        from api.cache import cache
+        cache.close()
     except Exception as e:
         logger.warning(f"Redis shutdown error: {e}")
 

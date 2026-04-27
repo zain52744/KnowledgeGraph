@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from api.auth import verify_api_key
-from api.dependencies import get_graph_store, get_pipeline
+from api.cache import cache
+from api.dependencies import get_graph_store, get_mongo_store, get_pipeline
 from api.limiter import limiter
-from monitoring.langfuse_setup import flush
+from monitoring.langfuse_setup import langfuse_manager
 from graph.graph_builder import GraphBuilder
+from graph.mongo_store import MongoGraphStore
 from orchestration.pipeline import KnowledgeGraphPipeline
 
 logger = logging.getLogger(__name__)
@@ -32,9 +34,15 @@ async def query(
     request: Request,
     body: QueryRequest,
     pipeline: KnowledgeGraphPipeline = Depends(get_pipeline),
+    mongo_store: MongoGraphStore = Depends(get_mongo_store),
 ) -> QueryResponse:
-    
+
     try:
+        cached = cache.get(body.question)
+        if cached:
+            logger.info(f"Cache hit for query: {body.question[:50]}...")
+            return QueryResponse(**cached)
+
         result = pipeline.query(query=body.question)
 
         answer = result.get("answer", "")
@@ -46,9 +54,14 @@ async def query(
         ]
         graph_context = context.get("graph_context", [])
 
-        logger.info(f"Query processed: {body.question[:50]}...")
-        flush()
-        return QueryResponse(answer=answer, sources=sources, graph_context=graph_context)
+        response_data = {"answer": answer, "sources": sources, "graph_context": graph_context}
+        cache.set(body.question, response_data)
+
+        mongo_store.save_query(body.question, answer, sources, graph_context)
+
+        logger.info(f"Query processed and cached: {body.question[:50]}...")
+        langfuse_manager.flush()
+        return QueryResponse(**response_data)
 
     except Exception as e:
         logger.error(f"Error processing query: {e}")

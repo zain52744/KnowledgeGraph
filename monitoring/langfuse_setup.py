@@ -1,20 +1,12 @@
 import logging
-import os
 import time
 import asyncio
-import json
 from typing import Any, Callable, Optional
 from functools import wraps
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-# Global langfuse client instance
-_langfuse_client = None
-_langfuse_enabled = False
-_callback_handler = None
-
-# Try to import langfuse context
 try:
     from langfuse.decorators import langfuse_context
     LANGFUSE_AVAILABLE = True
@@ -24,194 +16,75 @@ except (ImportError, ModuleNotFoundError):
     logger.warning("Langfuse not available, tracing disabled")
 
 
-def init_langfuse():
-   
-    global _langfuse_client, _langfuse_enabled
-    
-    try:
-        from config import settings
-        public_key = settings.langfuse_public_key
-        secret_key = settings.langfuse_secret_key
-        host = settings.langfuse_host
+class LangfuseManager:
 
-        if not public_key or not secret_key:
-            logger.warning("Langfuse keys not configured, monitoring disabled")
-            _langfuse_enabled = False
+    def __init__(self) -> None:
+        self._client = None
+        self._enabled = False
+        self._callback_handler = None
+
+    def init(self) -> bool:
+        try:
+            from config import settings
+            if not settings.langfuse_public_key or not settings.langfuse_secret_key:
+                logger.warning("Langfuse keys not configured, monitoring disabled")
+                return False
+
+            from langfuse import Langfuse
+            self._client = Langfuse(
+                public_key=settings.langfuse_public_key,
+                secret_key=settings.langfuse_secret_key,
+                host=settings.langfuse_host,
+            )
+            self._enabled = True
+            logger.info("Langfuse initialized successfully")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to initialize Langfuse: {e}")
+            self._enabled = False
             return False
 
-        from langfuse import Langfuse
-
-        _langfuse_client = Langfuse(
-            public_key=public_key,
-            secret_key=secret_key,
-            host=host,
-        )
-
-        _langfuse_enabled = True
-        logger.info("Langfuse initialized successfully")
-        return True
-
-    except Exception as e:
-        logger.warning(f"Failed to initialize Langfuse: {e}")
-        _langfuse_enabled = False
-        return False
-
-
-def trace_llm_call(name: str = None):
-    
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def async_wrapper(*args, **kwargs) -> Any:
-            if not LANGFUSE_AVAILABLE or not langfuse_context:
-                return await func(*args, **kwargs)
-            trace_name = name or func.__name__
-            start_time = time.time()
+    def flush(self) -> None:
+        if self._callback_handler and self._enabled:
             try:
-                with langfuse_context.trace(name=trace_name):
-                    input_data = {"function": trace_name, "args": _serialize_args(args), "kwargs": _serialize_args(kwargs)}
-                    langfuse_context.update_current_trace(input=input_data)
-                    result = await func(*args, **kwargs)
-                    latency_ms = (time.time() - start_time) * 1000
-                    output_data = {"result": _serialize_args(result), "latency_ms": latency_ms}
-                    langfuse_context.update_current_trace(output=output_data)
-                    logger.info(f"LLM call '{trace_name}' completed in {latency_ms:.2f}ms")
-                    return result
+                self._callback_handler.flush()
             except Exception as e:
-                latency_ms = (time.time() - start_time) * 1000
-                logger.error(f"Error in traced call {trace_name} after {latency_ms:.2f}ms: {e}")
-                langfuse_context.update_current_trace(output={"error": str(e), "latency_ms": latency_ms}, level="ERROR")
-                raise
+                logger.warning(f"Failed to flush Langfuse traces: {e}")
 
-        @wraps(func)
-        def sync_wrapper(*args, **kwargs) -> Any:
-            trace_name = name or func.__name__
-            start_time = time.time()
-            if not LANGFUSE_AVAILABLE or not langfuse_context:
-                return func(*args, **kwargs)
-            try:
-                with langfuse_context.trace(name=trace_name):
-                    input_data = {"function": trace_name, "args": _serialize_args(args), "kwargs": _serialize_args(kwargs)}
-                    langfuse_context.update_current_trace(input=input_data)
-                    result = func(*args, **kwargs)
-                    latency_ms = (time.time() - start_time) * 1000
-                    output_data = {"result": _serialize_args(result), "latency_ms": latency_ms}
-                    langfuse_context.update_current_trace(output=output_data)
-                    logger.info(f"LLM call '{trace_name}' completed in {latency_ms:.2f}ms")
-                    return result
-            except Exception as e:
-                latency_ms = (time.time() - start_time) * 1000
-                logger.error(f"Error in traced call {trace_name} after {latency_ms:.2f}ms: {e}")
-                langfuse_context.update_current_trace(output={"error": str(e), "latency_ms": latency_ms}, level="ERROR")
-                raise
+    def get_callback_handler(self):
+        if not self._enabled:
+            return None
+        if self._callback_handler is not None:
+            return self._callback_handler
 
-        # Return appropriate wrapper
-        if asyncio.iscoroutinefunction(func):
-            return async_wrapper
-        else:
-            return sync_wrapper
-
-    return decorator
-
-
-@contextmanager
-def trace_llm_operation(operation_name: str, input_data: Optional[dict] = None):
-  
-    start_time = time.time()
-    if not LANGFUSE_AVAILABLE or not langfuse_context:
-        yield
-        return
-    try:
-        with langfuse_context.trace(name=operation_name):
-            if input_data:
-                langfuse_context.update_current_trace(input=input_data)
-            logger.info(f"Starting LLM operation: {operation_name}")
-            yield
-            latency_ms = (time.time() - start_time) * 1000
-            langfuse_context.update_current_trace(output={"status": "success", "latency_ms": latency_ms})
-            logger.info(f"LLM operation '{operation_name}' completed successfully in {latency_ms:.2f}ms")
-    except Exception as e:
-        latency_ms = (time.time() - start_time) * 1000
-        logger.error(f"Error in LLM operation '{operation_name}' after {latency_ms:.2f}ms: {e}")
-        langfuse_context.update_current_trace(output={"status": "error", "error": str(e), "latency_ms": latency_ms}, level="ERROR")
-        raise
-
-
-def trace_span(name: str):
-  
-    class SpanContext:
-        def __enter__(self):
-            if _langfuse_enabled and langfuse_context is not None:
-                return langfuse_context.span(name=name)
+        from config import settings
+        try:
+            from langfuse.callback import CallbackHandler
+            self._callback_handler = CallbackHandler(
+                public_key=settings.langfuse_public_key,
+                secret_key=settings.langfuse_secret_key,
+                host=settings.langfuse_host,
+            )
+            logger.info("Langfuse CallbackHandler created successfully")
+            return self._callback_handler
+        except ImportError:
+            pass
+        try:
+            from langfuse.langchain import CallbackHandler
+            self._callback_handler = CallbackHandler(
+                public_key=settings.langfuse_public_key,
+                secret_key=settings.langfuse_secret_key,
+                host=settings.langfuse_host,
+            )
+            logger.info("Langfuse CallbackHandler created successfully")
+            return self._callback_handler
+        except Exception as e:
+            logger.warning(f"Langfuse LangChain integration not available: {e}")
             return None
 
-        def __exit__(self, *args):
-            pass
-
-    return SpanContext()
-
-
-def _serialize_args(obj: Any, max_depth: int = 2, current_depth: int = 0) -> Any:
-   
-    if current_depth >= max_depth:
-        return f"<{type(obj).__name__}>"
-    
-    try:
-        if isinstance(obj, (str, int, float, bool, type(None))):
-            return obj
-        elif isinstance(obj, dict):
-            return {
-                k: _serialize_args(v, max_depth, current_depth + 1)
-                for k, v in list(obj.items())[:10]  # Limit dict size
-            }
-        elif isinstance(obj, (list, tuple)):
-            return [
-                _serialize_args(item, max_depth, current_depth + 1)
-                for item in obj[:5]  # Limit list size
-            ]
-        elif hasattr(obj, "__dict__"):
-            # For custom objects, try to get string representation
-            return str(obj)[:200]
-        else:
-            return str(obj)[:200]
-    except Exception:
-        return f"<{type(obj).__name__}>"
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
 
 
-def flush():
-   
-    if _callback_handler and _langfuse_enabled:
-        try:
-            _callback_handler.flush()
-        except Exception as e:
-            logger.warning(f"Failed to flush Langfuse traces: {e}")
-
-
-def get_callback_handler():
-   
-    global _callback_handler
-    if not _langfuse_enabled:
-        return None
-    if _callback_handler is not None:
-        return _callback_handler
-    from config import settings
-    public_key = settings.langfuse_public_key
-    secret_key = settings.langfuse_secret_key
-    host = settings.langfuse_host
-    try:
-        from langfuse.callback import CallbackHandler
-        _callback_handler = CallbackHandler(public_key=public_key, secret_key=secret_key, host=host)
-        logger.info("Langfuse CallbackHandler created successfully")
-        return _callback_handler
-    except ImportError:
-        pass
-    try:
-        from langfuse.langchain import CallbackHandler
-        _callback_handler = CallbackHandler(public_key=public_key, secret_key=secret_key, host=host)
-        logger.info("Langfuse CallbackHandler created successfully")
-        return _callback_handler
-    except Exception as e:
-        logger.warning(f"Langfuse LangChain integration not available: {e}")
-        return None
-
-
-# Initialize Langfuse on module import
+langfuse_manager = LangfuseManager()
