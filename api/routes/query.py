@@ -54,10 +54,14 @@ async def query(
         ]
         graph_context = context.get("graph_context", [])
 
+        # Collect source documents from graph context entities
+        entity_names = [ctx.get("entity") for ctx in graph_context if ctx.get("entity")]
+        graph_doc_sources = mongo_store.get_document_sources_for_entities(entity_names) if entity_names else []
+
         response_data = {"answer": answer, "sources": sources, "graph_context": graph_context}
         cache.set(body.question, response_data)
 
-        mongo_store.save_query(body.question, answer, sources, graph_context)
+        mongo_store.save_query(body.question, answer, sources, graph_context, document_sources=graph_doc_sources)
 
         logger.info(f"Query processed and cached: {body.question[:50]}...")
         langfuse_manager.flush()
@@ -139,5 +143,20 @@ async def get_graph_path(
     except Exception as e:
         logger.error(f"Error retrieving path: {e}")
         raise HTTPException(status_code=500, detail="Path retrieval failed")
+
+
+@router.get("/query-history", response_model=List[Dict[str, Any]])
+async def get_query_history(
+    document: str = Query(..., description="Document filename to filter by"),
+    limit: int = Query(100, ge=1, le=500),
+    mongo_store: MongoGraphStore = Depends(get_mongo_store),
+) -> List[Dict[str, Any]]:
+    try:
+        results = mongo_store.get_queries_by_document(document, limit=limit)
+        logger.info(f"Fetched {len(results)} queries for document: {document}")
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching query history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch query history")
 
 

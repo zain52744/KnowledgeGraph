@@ -5,6 +5,7 @@ from ingestion.pdf_parser import PDFParser
 from ingestion.csv_loader import CSVLoader
 from extraction.extractor import KnowledgeExtractor
 from graph.graph_builder import GraphBuilder
+from graph.mongo_store import MongoGraphStore
 from vector_store.faiss_store import FAISSVectorStore
 from rag.retriever import hybrid_search, answer_question
 from langchain_openai import ChatOpenAI
@@ -20,10 +21,12 @@ class KnowledgeGraphPipeline:
         graph_store: GraphBuilder,
         vector_store: FAISSVectorStore,
         llm_model: str = "gpt-4o-mini",
+        mongo_store: MongoGraphStore = None,
     ):
-       
+
         self.graph_store = graph_store
         self.vector_store = vector_store
+        self.mongo_store = mongo_store
         self.extractor = KnowledgeExtractor(model=llm_model)
         self.pdf_parser = PDFParser()
         self.csv_loader = CSVLoader()
@@ -85,6 +88,16 @@ class KnowledgeGraphPipeline:
                 self.graph_store.add_entities(kg.entities)
                 self.graph_store.add_relations(kg.relations)
 
+                if self.mongo_store:
+                    try:
+                        source_doc = state.get("source", "unknown")
+                        entities_data = [e.model_dump() for e in kg.entities]
+                        relations_data = [r.model_dump() for r in kg.relations]
+                        self.mongo_store.save_entities(entities_data)
+                        self.mongo_store.save_relations(relations_data, source_document=source_doc)
+                    except Exception as e:
+                        logger.warning(f"MongoDB persist failed (non-fatal): {e}")
+
         elif triples:
             logger.info(f"Storing {len(triples)} triples in graph")
             from extraction.schemas import Relation
@@ -115,6 +128,16 @@ class KnowledgeGraphPipeline:
                 self.graph_store.graph.add_node(entity_name, type="Entity", description="")
 
             self.graph_store.add_relations(relations)
+
+            if self.mongo_store:
+                try:
+                    source_doc = state.get("source", "unknown")
+                    entities_data = [{"entity_id": e, "name": e, "type": "Entity"} for e in entities]
+                    relations_data = [r.model_dump() for r in relations]
+                    self.mongo_store.save_entities(entities_data)
+                    self.mongo_store.save_relations(relations_data, source_document=source_doc)
+                except Exception as e:
+                    logger.warning(f"MongoDB persist failed (non-fatal): {e}")
 
         state["graph_stats"] = self.graph_store.get_graph_stats()
         return state
@@ -246,6 +269,20 @@ class KnowledgeGraphPipeline:
             state["error"] = "No file path provided"
 
         return state
+
+    def ingest_text(self, text: str, source: str = "report") -> Dict[str, Any]:
+        """Ingest plain text directly into the vector store, bypassing PDF parsing."""
+        if not text.strip():
+            return {"chunks": [], "vector_stats": self.vector_store.get_stats()}
+
+        chunks = self.pdf_parser._create_token_chunks(text, [], source)
+        if chunks:
+            self.vector_store.add_chunks(chunks)
+
+        return {
+            "chunks": chunks,
+            "vector_stats": self.vector_store.get_stats(),
+        }
 
     def ingest(self, pdf_path: str = None, csv_path: str = None) -> Dict[str, Any]:
         

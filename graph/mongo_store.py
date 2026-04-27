@@ -22,14 +22,18 @@ class MongoGraphStore:
         self.snapshots_collection = self.db["graph_snapshots"]
         self.entities_collection = self.db["entities"]
         self.relations_collection = self.db["relations"]
+        self.query_history_collection = self.db["query_history"]
         self._create_indexes()
 
     def _create_indexes(self) -> None:
-        
+
         try:
             self.snapshots_collection.create_index("timestamp", unique=False)
             self.entities_collection.create_index("entity_id", unique=True)
             self.relations_collection.create_index([("source", 1), ("target", 1)])
+            self.relations_collection.create_index("source_document", unique=False)
+            self.query_history_collection.create_index("timestamp", unique=False)
+            self.query_history_collection.create_index("document_sources", unique=False)
             logger.info("MongoDB indexes created")
         except Exception as e:
             logger.warning(f"Error creating indexes: {e}")
@@ -103,14 +107,16 @@ class MongoGraphStore:
             logger.error(f"Error saving entities: {e}")
             raise
 
-    def save_relations(self, relations: List[Dict[str, Any]]) -> int:
-        
+    def save_relations(self, relations: List[Dict[str, Any]], source_document: str = None) -> int:
         try:
             count = 0
             for relation in relations:
+                doc = {**relation}
+                if source_document:
+                    doc["source_document"] = source_document
                 self.relations_collection.update_one(
                     {"source": relation.get("source"), "target": relation.get("target")},
-                    {"$set": relation},
+                    {"$set": doc},
                     upsert=True
                 )
                 count += 1
@@ -119,6 +125,32 @@ class MongoGraphStore:
         except Exception as e:
             logger.error(f"Error saving relations: {e}")
             raise
+
+    def get_document_sources_for_entities(self, entity_names: List[str]) -> List[str]:
+        try:
+            docs = self.relations_collection.find(
+                {"$or": [
+                    {"source": {"$in": entity_names}},
+                    {"target": {"$in": entity_names}},
+                ]},
+                {"source_document": 1, "_id": 0}
+            )
+            sources = {d["source_document"] for d in docs if d.get("source_document")}
+            return list(sources)
+        except Exception as e:
+            logger.warning(f"Error fetching document sources for entities: {e}")
+            return []
+
+    def get_queries_by_document(self, document_name: str, limit: int = 100) -> List[Dict[str, Any]]:
+        try:
+            cursor = self.query_history_collection.find(
+                {"document_sources": document_name},
+                {"_id": 0}
+            ).sort("timestamp", -1).limit(limit)
+            return list(cursor)
+        except Exception as e:
+            logger.error(f"Error fetching queries by document: {e}")
+            return []
 
     def get_entity(self, entity_id: str) -> Optional[Dict[str, Any]]:
        
@@ -141,9 +173,26 @@ class MongoGraphStore:
        
         return list(self.relations_collection.find().limit(limit))
 
+    def save_query(self, question: str, answer: str, sources: List[str], graph_context: List[Dict[str, Any]], document_sources: List[str] = None) -> str:
+        try:
+            doc = {
+                "question": question,
+                "answer": answer,
+                "sources": sources,
+                "graph_context": graph_context,
+                "document_sources": list(set(sources + (document_sources or []))),
+                "timestamp": datetime.utcnow(),
+            }
+            result = self.query_history_collection.insert_one(doc)
+            logger.info(f"Query saved to history: {question[:60]}")
+            return str(result.inserted_id)
+        except Exception as e:
+            logger.error(f"Error saving query to history: {e}")
+            raise
+
     def clear(self) -> None:
-       
         self.entities_collection.delete_many({})
         self.relations_collection.delete_many({})
         self.snapshots_collection.delete_many({})
+        self.query_history_collection.delete_many({})
         logger.info("MongoDB collections cleared")
