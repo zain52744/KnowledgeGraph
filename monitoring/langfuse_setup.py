@@ -29,9 +29,10 @@ def init_langfuse():
     global _langfuse_client, _langfuse_enabled
     
     try:
-        public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-        secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-        host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+        from config import settings
+        public_key = settings.langfuse_public_key
+        secret_key = settings.langfuse_secret_key
+        host = settings.langfuse_host
 
         if not public_key or not secret_key:
             logger.warning("Langfuse keys not configured, monitoring disabled")
@@ -192,9 +193,10 @@ def get_callback_handler():
         return None
     if _callback_handler is not None:
         return _callback_handler
-    public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
-    secret_key = os.getenv("LANGFUSE_SECRET_KEY")
-    host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+    from config import settings
+    public_key = settings.langfuse_public_key
+    secret_key = settings.langfuse_secret_key
+    host = settings.langfuse_host
     try:
         from langfuse.callback import CallbackHandler
         _callback_handler = CallbackHandler(public_key=public_key, secret_key=secret_key, host=host)

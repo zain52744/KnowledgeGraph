@@ -1,26 +1,28 @@
+import json
 import logging
 from typing import List, Dict, Any, Optional
 import os
 import faiss
 import numpy as np
-from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
 
-load_dotenv()
+from config import settings
+
 logger = logging.getLogger(__name__)
 
 
 class FAISSVectorStore:
-    
+
 
     def __init__(self, dimension: int = 1536, index_path: Optional[str] = None):
-       
+
         self.dimension = dimension
         self.index = None
         self.index_path = index_path or "faiss_index.bin"
+        self.metadata_path = self.index_path.replace(".bin", "_metadata.json")
         self.embeddings_model = OpenAIEmbeddings(
             model="text-embedding-3-small",
-            api_key=os.getenv("OPENAI_API_KEY")
+            api_key=settings.openai_api_key,
         )
         self.chunks_metadata: List[Dict[str, Any]] = []
 
@@ -40,6 +42,22 @@ class FAISSVectorStore:
         except Exception as e:
             logger.warning(f"Failed to load index, creating new: {e}")
             self._create_index()
+            return
+
+        # Load matching metadata sidecar
+        if os.path.exists(self.metadata_path):
+            try:
+                with open(self.metadata_path, "r", encoding="utf-8") as f:
+                    self.chunks_metadata = json.load(f)
+                logger.info(f"Loaded {len(self.chunks_metadata)} chunk metadata entries")
+            except Exception as e:
+                logger.warning(f"Failed to load metadata, starting fresh: {e}")
+                self.chunks_metadata = []
+        else:
+            # Metadata out of sync with FAISS — reset both to stay consistent
+            logger.warning("No metadata sidecar found; resetting FAISS index to maintain sync")
+            self._create_index()
+            self.chunks_metadata = []
 
     def add_chunks(self, chunks: List[Dict[str, Any]]) -> int:
         
@@ -118,6 +136,13 @@ class FAISSVectorStore:
             logger.info(f"Saved FAISS index to {self.index_path}")
         except Exception as e:
             logger.warning(f"Failed to save index: {e}")
+
+        try:
+            with open(self.metadata_path, "w", encoding="utf-8") as f:
+                json.dump(self.chunks_metadata, f, ensure_ascii=False)
+            logger.info(f"Saved {len(self.chunks_metadata)} metadata entries to {self.metadata_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save metadata: {e}")
 
     def close(self) -> None:
         self._save_index()

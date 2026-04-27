@@ -6,19 +6,17 @@ import os
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-load_dotenv()
+from config import settings
 
 
 def _configure_logging() -> None:
-    """Set up console + rotating-file logging with a structured format."""
-    log_dir = os.getenv("LOG_DIR", "logs")
+    log_dir = settings.log_dir
     os.makedirs(log_dir, exist_ok=True)
 
     structured_fmt = logging.Formatter(
@@ -67,13 +65,19 @@ async def lifespan(app: FastAPI):
     global mongo_client, mongo_db
 
     try:
-        mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-        mongo_client = AsyncIOMotorClient(mongo_uri)
+        mongo_client = AsyncIOMotorClient(settings.mongodb_uri)
         mongo_db = mongo_client["knowledge_graph"]
         await mongo_db.command("ping")
         logger.info("MongoDB connected successfully")
     except Exception as e:
         logger.warning(f"MongoDB connection failed: {e}")
+
+    # Redis cache
+    try:
+        from api.cache import init_redis
+        init_redis()
+    except Exception as e:
+        logger.warning(f"Redis connection failed (cache disabled): {e}")
 
     # Initialize LangFuse tracing first so callbacks are ready before LLMs are created
     from monitoring.langfuse_setup import init_langfuse
@@ -100,6 +104,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to save FAISS index on shutdown: {e}")
 
+    try:
+        from api.cache import close_redis
+        close_redis()
+    except Exception as e:
+        logger.warning(f"Redis shutdown error: {e}")
+
     if mongo_client:
         mongo_client.close()
         logger.info("MongoDB connection closed")
@@ -119,7 +129,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS — restrict origins via env var in production
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+allowed_origins = settings.allowed_origins.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -194,6 +204,6 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=int(os.getenv("API_PORT", "8000")),
+        port=settings.api_port,
         log_level="info",
     )
